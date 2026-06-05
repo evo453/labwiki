@@ -219,5 +219,15 @@
 </div>
 
 <script src="/app.js"></script>
+
+<!-- 心跳上报：告知调度器页面仍在活跃，防止自动回收 -->
+<script>
+(function() {
+  var HB_URL = 'https://labwiki-scheduler.YOUR_SUBDOMAIN.workers.dev/heartbeat';
+  setInterval(function() {
+    fetch(HB_URL, { method: 'POST', mode: 'no-cors' }).catch(function(){});
+  }, 30000);
+})();
+</script>
 </body>
 </html>

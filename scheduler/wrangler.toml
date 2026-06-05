@@ -1,0 +1,19 @@
+# LabWiki Scheduler - Cloudflare Worker 配置
+name = "labwiki-scheduler"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+# KV 命名空间（部署前需要先创建，然后填 ID）
+# 创建命令: npx wrangler kv:namespace create "LABWIKI_STATE"
+# 创建后会返回 id，把下面这行的 id 替换掉
+[[kv_namespaces]]
+binding = "LABWIKI_STATE"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# 定时任务：每 2 分钟检查一次闲置服务
+[triggers]
+crons = ["*/2 * * * *"]
+
+# 环境变量（部署前设置）
+# npx wrangler secret put RAILWAY_API_TOKEN
+# 或者直接在 Railway → 账户设置 → API Tokens 生成一个
