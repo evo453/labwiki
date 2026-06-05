@@ -1,0 +1,16 @@
+{
+  "name": "labwiki",
+  "version": "3.0.0",
+  "description": "实验室知识库 - Node.js + PostgreSQL 云端部署版",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "pg": "^8.14.0"
+  }
+}
