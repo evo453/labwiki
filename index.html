@@ -223,7 +223,7 @@
 <!-- 心跳上报：告知调度器页面仍在活跃，防止自动回收 -->
 <script>
 (function() {
-  var HB_URL = 'https://labwiki-scheduler.YOUR_SUBDOMAIN.workers.dev/heartbeat';
+  var HB_URL = 'https://eclipsing-star-ff29.192529443.workers.dev/heartbeat';
   setInterval(function() {
     fetch(HB_URL, { method: 'POST', mode: 'no-cors' }).catch(function(){});
   }, 30000);
