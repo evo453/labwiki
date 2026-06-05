@@ -1,6 +1,7 @@
 /**
- * LabWiki - 实验室知识库后端
+ * LabWiki v3 - 实验室知识库后端
  * 架构：优先 PostgreSQL（Railway 云部署），本地开发回退 JSON 文件
+ * 公网地址：https://labwiki-production.up.railway.app
  */
 const http = require('http');
 const fs = require('fs');
@@ -81,22 +82,31 @@ function writeLocal(file, data) {
 }
 
 function parseBody(req) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     let body = '';
     req.on('data', chunk => body += chunk.toString());
     req.on('end', () => {
-      try { resolve(JSON.parse(body)); } catch { resolve({}); }
+      try { resolve(JSON.parse(body)); } catch (e) { resolve({}); }
     });
   });
 }
 
-// ===== 数据访问层（统一接口）=====
+function rowToArticle(r) {
+  return {
+    id: r.id, title: r.title, categoryId: r.category_id, type: r.type,
+    summary: r.summary, content: r.content, codeLang: r.code_lang,
+    linkUrl: r.link_url, fileName: r.file_name, fileData: r.file_data,
+    createdAt: r.created_at, updatedAt: r.updated_at
+  };
+}
+
+// ===== 数据访问层 =====
 const db = {
-  // 文章
+  // ---- 文章 ----
   async getArticles() {
     if (isPg) {
       const res = await pool.query('SELECT * FROM articles ORDER BY created_at DESC');
-      return res.rows.map(r => rowToArticle(r)));
+      return res.rows.map(r => rowToArticle(r));
     }
     return readLocal('articles.json') || [];
   },
@@ -139,17 +149,17 @@ const db = {
   async updateArticle(id, data) {
     const now = new Date().toISOString();
     if (isPg) {
-      const fields = [];
+      const sets = [];
       const vals = [id];
-      const map = { title:'title', categoryId:'category_id', type:'type', summary:'summary',
-                    content:'content', codeLang:'code_lang', linkUrl:'link_url',
-                    fileName:'file_name', fileData:'file_data' };
       let i = 2;
-      for (const [k, col] of Object.entries(map)) {
-        if (data[k] !== undefined) { fields.push(`${col}=$${i++}`); vals.push(data[k]); }
+      const colMap = { title:'title', categoryId:'category_id', type:'type', summary:'summary',
+                       content:'content', codeLang:'code_lang', linkUrl:'link_url',
+                       fileName:'file_name', fileData:'file_data' };
+      for (const [k, col] of Object.entries(colMap)) {
+        if (data[k] !== undefined) { sets.push(col + '=$' + i); vals.push(data[k]); i++; }
       }
-      fields.push(`updated_at=$${i}`); vals.push(now);
-      await pool.query(`UPDATE articles SET ${fields.join(',')} WHERE id=$1`, vals);
+      sets.push('updated_at=$' + i); vals.push(now);
+      await pool.query('UPDATE articles SET ' + sets.join(',') + ' WHERE id=$1', vals);
     } else {
       const articles = readLocal('articles.json') || [];
       const idx = articles.findIndex(a => a.id === id);
@@ -158,7 +168,7 @@ const db = {
   },
 
   async deleteArticle(id) {
-    if (isPg) await pool.query('DELETE FROM articles WHERE id=$1', [id]);
+    if (isPg) { await pool.query('DELETE FROM articles WHERE id=$1', [id]); }
     else {
       let articles = readLocal('articles.json') || [];
       articles = articles.filter(a => a.id !== id);
@@ -166,7 +176,7 @@ const db = {
     }
   },
 
-  // 分类
+  // ---- 分类 ----
   async getCategories() {
     if (isPg) {
       const res = await pool.query('SELECT * FROM categories ORDER BY name');
@@ -178,7 +188,7 @@ const db = {
   async createCategory(data) {
     const id = Date.now().toString(36);
     const cat = { id, name: data.name || '新分类', children: data.children || [] };
-    if (isPg) await pool.query('INSERT INTO categories (id,name,children) VALUES ($1,$2,$3)', [id, cat.name, JSON.stringify(cat.children)]);
+    if (isPg) { await pool.query('INSERT INTO categories (id,name,children) VALUES ($1,$2,$3)', [id, cat.name, JSON.stringify(cat.children)]); }
     else { const cats = readLocal('categories.json') || []; cats.push(cat); writeLocal('categories.json', cats); }
     return cat;
   },
@@ -188,9 +198,9 @@ const db = {
       const sets = [];
       const vals = [id];
       let i = 2;
-      if (data.name !== undefined) { sets.push(`name=$${i++}`); vals.push(data.name); }
-      if (data.children !== undefined) { sets.push(`children=$${i++}`); vals.push(JSON.stringify(data.children)); }
-      await pool.query(`UPDATE categories SET ${sets.join(',')} WHERE id=$1`, vals);
+      if (data.name !== undefined) { sets.push('name=$' + i); vals.push(data.name); i++; }
+      if (data.children !== undefined) { sets.push('children=$' + i); vals.push(JSON.stringify(data.children)); i++; }
+      await pool.query('UPDATE categories SET ' + sets.join(',') + ' WHERE id=$1', vals);
     } else {
       const cats = readLocal('categories.json') || [];
       const idx = cats.findIndex(c => c.id === id);
@@ -212,7 +222,7 @@ const db = {
     }
   },
 
-  // 设置
+  // ---- 设置 ----
   async getSettings() {
     if (isPg) {
       const res = await pool.query(`SELECT value FROM settings WHERE key='site'`);
@@ -233,15 +243,6 @@ const db = {
     }
   }
 };
-
-function rowToArticle(r) {
-  return {
-    id: r.id, title: r.title, categoryId: r.category_id, type: r.type,
-    summary: r.summary, content: r.content, codeLang: r.code_lang,
-    linkUrl: r.link_url, fileName: r.file_name, fileData: r.file_data,
-    createdAt: r.created_at, updatedAt: r.updated_at
-  };
-}
 
 // ===== HTTP 服务器 =====
 const server = http.createServer(async (req, res) => {
@@ -265,7 +266,7 @@ const server = http.createServer(async (req, res) => {
       if (fs.statSync(filePath).isDirectory()) filePath += '/index.html';
       res.writeHead(200, { 'Content-Type': mime[ext] || 'application/octet-stream' });
       res.end(fs.readFileSync(filePath));
-    } catch { res.writeHead(404); res.end('Not Found'); }
+    } catch (e) { res.writeHead(404); res.end('Not Found'); }
     return;
   }
 
@@ -274,7 +275,6 @@ const server = http.createServer(async (req, res) => {
   try {
     const body = (req.method !== 'GET' && req.method !== 'DELETE') ? await parseBody(req) : null;
 
-    // 路由
     if (pathname === '/api/articles' && req.method === 'GET') {
       res.end(JSON.stringify(await db.getArticles()));
     }
@@ -336,5 +336,5 @@ const server = http.createServer(async (req, res) => {
 (async () => {
   if (isPg) { await initDb(); console.log('[DB] PostgreSQL connected'); }
   else { console.log('[DB] Using local JSON files'); }
-  server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  server.listen(PORT, '0.0.0.0', () => console.log('Server running on port ' + PORT));
 })();
